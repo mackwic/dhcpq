@@ -13,7 +13,7 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn new(address : SocketAddr) -> Result<Server, Error> { 
+    pub fn new(address : SocketAddr) -> Result<Server, Error> {
 
         if let SocketAddr::V6(_) = address {
             return Err(Error::Ipv6Unsupported)
@@ -29,12 +29,14 @@ impl Server {
             event_loop : event_loop,
         })
     }
-    
-    pub fn run(&mut self) {
-        self.socket.bind(&self.address).unwrap();
+
+    pub fn run(&mut self) -> Result<(), Error> {
+        try!(self.socket.bind(&self.address));
 
         let mut inner = InnerServer { tick_counter : 0 };
-        self.event_loop.run(&mut inner).unwrap();
+        try!(self.event_loop.run(&mut inner));
+
+        unreachable!()
     }
 }
 
@@ -56,13 +58,13 @@ impl Handler for InnerServer {
 mod tests {
     pub use super::*;
 
-    mod new {
+    mod server {
         pub use super::*;
 
         #[test]
         fn it_cant_new_with_ipv6() {
             let s = Server::new("[::ff]:6767".parse().unwrap());
-            assert!(s.is_err());
+            assert!(s.is_err())
         }
 
         #[test]
