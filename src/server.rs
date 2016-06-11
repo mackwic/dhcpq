@@ -6,14 +6,14 @@ use std::net::SocketAddr;
 const SERVER: Token = Token(0);
 
 #[derive(Debug)]
-pub struct Server {
+pub struct Server<'a> {
     address : SocketAddr,
     socket : UdpSocket,
-    event_loop : EventLoop<InnerServer>,
+    event_loop : EventLoop<InnerServer<'a>>,
 }
 
-impl Server {
-    pub fn new(address : SocketAddr) -> Result<Server, Error> {
+impl<'a> Server<'a> {
+    pub fn new<'b>(address : SocketAddr) -> Result<Server<'b>, Error> {
 
         if let SocketAddr::V6(_) = address {
             return Err(Error::Ipv6Unsupported)
@@ -30,10 +30,10 @@ impl Server {
         })
     }
 
-    pub fn run(&mut self) -> Result<(), Error> {
+    pub fn run<'b>(&'a mut self) -> Result<(), Error> {
         try!(self.socket.bind(&self.address));
 
-        let mut inner = InnerServer { tick_counter : 0 };
+        let mut inner = InnerServer::new(&self.socket);
         try!(self.event_loop.run(&mut inner));
 
         unreachable!()
@@ -41,11 +41,23 @@ impl Server {
 }
 
 #[derive(Debug)]
-struct InnerServer {
+struct InnerServer<'a> {
     tick_counter: u32,
+    socket: &'a UdpSocket,
 }
 
-impl Handler for InnerServer {
+impl<'a> InnerServer<'a> {
+    fn new<'serv_instance, 'server>(socket: &'server UdpSocket) -> InnerServer<'serv_instance>
+        where 'server : 'serv_instance {
+
+        InnerServer {
+            tick_counter: 0,
+            socket: &socket
+        }
+    }
+}
+
+impl<'a> Handler for InnerServer<'a> {
     type Timeout = ();
     type Message = ();
 
@@ -78,10 +90,12 @@ mod tests {
         use super::super::InnerServer;
         use super::super::SERVER;
         use mio::*;
+        use mio::udp::UdpSocket;
 
         #[test]
         fn ready_can_be_called() {
-            let mut inner = InnerServer { tick_counter : 0 };
+            let sock = UdpSocket::v4().unwrap();
+            let mut inner = InnerServer::new(&sock);
             inner.ready(&mut EventLoop::new().unwrap(), SERVER, EventSet::all());
             assert_eq!(1, inner.tick_counter);
             inner.ready(&mut EventLoop::new().unwrap(), SERVER, EventSet::all());
