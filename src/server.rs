@@ -1,19 +1,16 @@
 use errors::Error;
+use mio::*;
 use mio::udp::*;
-use mio;
 use std::net::SocketAddr;
 
-const SERVER: mio::Token = mio::Token(0);
+const SERVER: Token = Token(0);
 
 #[derive(Debug)]
 pub struct Server {
     address : SocketAddr,
     socket : UdpSocket,
-    event_loop : mio::EventLoop<InnerServer>,
+    event_loop : EventLoop<InnerServer>,
 }
-
-#[derive(Debug)]
-struct InnerServer;
 
 impl Server {
     pub fn new(address : SocketAddr) -> Result<Server, Error> { 
@@ -23,8 +20,8 @@ impl Server {
         }
 
         let socket = try!(UdpSocket::v4());
-        let mut event_loop = try!(mio::EventLoop::new());
-        try!(event_loop.register(&socket, SERVER, mio::EventSet::all(), mio::PollOpt::edge()));
+        let mut event_loop = try!(EventLoop::new());
+        try!(event_loop.register(&socket, SERVER, EventSet::all(), PollOpt::edge()));
 
         Ok(Server {
             address : address,
@@ -36,19 +33,27 @@ impl Server {
     pub fn run(&mut self) {
         self.socket.bind(&self.address).unwrap();
 
-        let mut inner = InnerServer {};
+        let mut inner = InnerServer { tick_counter : 0 };
         self.event_loop.run(&mut inner).unwrap();
     }
 }
 
-impl mio::Handler for InnerServer {
+#[derive(Debug)]
+struct InnerServer {
+    tick_counter: u32,
+}
+
+impl Handler for InnerServer {
     type Timeout = ();
     type Message = ();
+
+    fn ready(&mut self, _event_loop: &mut EventLoop<Self>, _token: Token, _events: EventSet) {
+        self.tick_counter += 1;
+    }
 }
 
 #[cfg(test)]
 mod tests {
-
     pub use super::*;
 
     mod new {
@@ -63,6 +68,22 @@ mod tests {
         #[test]
         fn it_can_new_with_ipv4() {
             assert!(Server::new("0.0.0.0:6567".parse().unwrap()).is_ok())
+        }
+    }
+
+    mod inner_server{
+        pub use super::*;
+        use super::super::InnerServer;
+        use super::super::SERVER;
+        use mio::*;
+
+        #[test]
+        fn ready_can_be_called() {
+            let mut inner = InnerServer { tick_counter : 0 };
+            inner.ready(&mut EventLoop::new().unwrap(), SERVER, EventSet::all());
+            assert_eq!(1, inner.tick_counter);
+            inner.ready(&mut EventLoop::new().unwrap(), SERVER, EventSet::all());
+            assert_eq!(2, inner.tick_counter);
         }
     }
 }
