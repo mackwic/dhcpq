@@ -6,6 +6,9 @@ quick_error! {
         Ipv6Unsupported {
             description("IPv6 addresses are not supported")
         }
+        BadInputDatagram {
+            description("Bad input datagram")
+        }
         InnerIo(err: io::Error) {
             from()
         }

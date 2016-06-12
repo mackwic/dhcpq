@@ -8,5 +8,6 @@ authors = [
 
 [dependencies]
 mio = "0.5"
+nom = "1.2"
 quick-error = "1.1"
 

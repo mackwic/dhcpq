@@ -197,7 +197,7 @@ mod tests {
         #[test]
         fn initialize_invalids_datagrams_count_to_zero() {
             let (_, sock) = UdpSocketMock::new();
-            let mut inner = InnerServer::new(&sock);
+            let inner = InnerServer::new(&sock);
 
             assert_eq!(0, inner.datagrams_invalid);
         }
@@ -277,4 +277,12 @@ mod tests {
             assert_eq!(0, inner.datagrams_invalid);
         }
     }
+
+    /* Test list
+     * - InnerServer -> when socket returns Err then what to do ?
+     * - InnerServer -> when sending empty datagrams ?
+     * - InnerServer -> when sending >4096 byte datagrams ?
+     * - InnerServer -> when 2 send then read them all (not wait next tick)
+     * - InnerServer -> count valid datagrams
+     */
 }

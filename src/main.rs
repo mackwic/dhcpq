@@ -3,10 +3,13 @@
 #![allow(unused_imports)]
 
 extern crate mio;
+#[macro_use]
+extern crate nom;
 #[macro_use(quick_error)]
 extern crate quick_error;
 
 mod errors;
+mod parser;
 mod server;
 mod traits;
 
