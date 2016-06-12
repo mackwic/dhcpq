@@ -12,19 +12,13 @@ use errors::Error;
 mod server;
 use server::Server;
 
-////////////////////////////////////////
-
 const IPV4_PORT : u32 = 67;
-
-////////////////////////////////////////
 
 fn main() {
     let address = "0.0.0.0:6567".parse().unwrap();
 
     println!("yo ! {:?}", Server::new(address))
 }
-
-////////////////////////////////////////
 
 #[cfg(test)]
 mod tests {

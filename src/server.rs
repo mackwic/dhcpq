@@ -9,7 +9,7 @@ const SERVER: Token = Token(0);
 pub struct Server<'a> {
     address : SocketAddr,
     socket : UdpSocket,
-    event_loop : EventLoop<InnerServer<'a>>,
+    event_loop : EventLoop<InnerServer<'a, UdpSocket>>,
 }
 
 impl<'a> Server<'a> {
@@ -40,24 +40,29 @@ impl<'a> Server<'a> {
     }
 }
 
+use std::fmt::Debug;
+trait SocketTrait : Debug { }
+impl SocketTrait for UdpSocket {}
+
 #[derive(Debug)]
-struct InnerServer<'a> {
+struct InnerServer<'a, S> where S : 'a + SocketTrait {
+
     tick_counter: u32,
-    socket: &'a UdpSocket,
+    socket: &'a S,
 }
 
-impl<'a> InnerServer<'a> {
-    fn new<'serv_instance, 'server>(socket: &'server UdpSocket) -> InnerServer<'serv_instance>
+impl<'a, Sock : SocketTrait> InnerServer<'a, Sock> {
+    fn new<'serv_instance, 'server>(socket: &'server Sock) -> InnerServer<'serv_instance, Sock>
         where 'server : 'serv_instance {
 
         InnerServer {
             tick_counter: 0,
-            socket: &socket
+            socket: socket
         }
     }
 }
 
-impl<'a> Handler for InnerServer<'a> {
+impl<'a, Sock : SocketTrait> Handler for InnerServer<'a, Sock> {
     type Timeout = ();
     type Message = ();
 
