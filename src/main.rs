@@ -7,9 +7,9 @@ extern crate mio;
 extern crate quick_error;
 
 mod errors;
-use errors::Error;
-
 mod server;
+mod traits;
+
 use server::Server;
 
 const IPV4_PORT : u32 = 67;
