@@ -70,7 +70,7 @@ impl<'a, Sock : SocketTrait> Handler for InnerServer<'a, Sock> {
         let mut buffer : [u8; 4096] = [0; 4096];
 
         match self.socket.recv_from(&mut buffer) {
-            Ok(Some((count, _))) => self.bytes_read = count,
+            Ok(Some((count, _))) => self.bytes_read += count,
             _ => ()
         }
     }
@@ -102,24 +102,33 @@ mod tests {
         use mio::*;
         use mio::udp::UdpSocket;
         use std::io;
+        use std::sync::mpsc;
         use std::net;
         use traits;
 
-        #[derive(Debug, Default)]
-        struct UdpSocketMock {
-            data: Vec<u8>
+
+        #[derive(Debug)]
+        struct UdpSocketMock<'a> {
+            receiver: mpsc::Receiver<&'a [u8]>,
         }
 
-        impl UdpSocketMock {
-            fn push_data(&mut self, data: Vec<u8>) {
-                self.data = data
+        impl<'a> UdpSocketMock<'a> {
+            fn new() -> (mpsc::Sender<&'a [u8]>, UdpSocketMock<'a>) {
+                let (send, recv) = mpsc::channel();
+                (send, UdpSocketMock { receiver: recv })
             }
         }
 
-        impl traits::SocketTrait for UdpSocketMock {
-            fn recv_from(&self, _buf: &mut [u8]) -> io::Result<Option<(usize, net::SocketAddr)>> {
-                let data = &self.data;
-                Ok(Some((data.len(), "0.0.0.0:0".parse().unwrap())))
+        impl<'a> traits::SocketTrait for UdpSocketMock<'a> {
+            fn recv_from(&self, mut buf: &mut [u8]) -> io::Result<Option<(usize, net::SocketAddr)>> {
+
+                let mut received_values = try!(self.receiver.try_recv()
+                                               .or_else(|err| {
+                                                   Err(io::Error::new(io::ErrorKind::Other,err))
+                                               }));
+
+                let count = try!(io::copy(&mut received_values, &mut buf));
+                Ok(Some((count as usize, "0.0.0.0:0".parse().unwrap())))
             }
         }
 
@@ -135,17 +144,17 @@ mod tests {
 
         #[test]
         fn no_bytes_read_at_initialization() {
-            let sock = UdpSocketMock::default();
+            let (_, sock) = UdpSocketMock::new();
             let inner = InnerServer::new(&sock);
             assert_eq!(0, inner.bytes_read);
         }
 
         #[test]
         fn it_can_read_from_socket() {
-            let mut sock = UdpSocketMock::default();
+            let (sender, sock) = UdpSocketMock::new();
             let data = "hello";
             let len  = data.len();
-            sock.push_data(Vec::from(data));
+            sender.send(data.as_bytes()).unwrap();
 
             let mut inner = InnerServer::new(&sock);
             inner.ready(&mut EventLoop::new().unwrap(), SERVER, EventSet::all());
@@ -154,10 +163,10 @@ mod tests {
 
         #[test]
         fn bytes_read_is_the_same_as_input_size() {
-            let mut sock = UdpSocketMock::default();
+            let (sender, sock) = UdpSocketMock::new();
             let data = "hello hello";
             let len  = data.len();
-            sock.push_data(Vec::from(data));
+            sender.send(data.as_bytes()).unwrap();
 
             let mut inner = InnerServer::new(&sock);
             inner.ready(&mut EventLoop::new().unwrap(), SERVER, EventSet::all());
@@ -166,19 +175,20 @@ mod tests {
 
         #[test]
         fn bytes_read_increase_each_time_something_is_read() {
-            let mut sock = UdpSocketMock::default();
-            let data1 = "hello hello";
-            let len1  = data1.len();
-            sock.push_data(Vec::from(data1));
+            let (sender, sock) = UdpSocketMock::new();
 
+            let mut ev = EventLoop::new().unwrap();
             let mut inner = InnerServer::new(&sock);
-            inner.ready(&mut EventLoop::new().unwrap(), SERVER, EventSet::all());
-            assert_eq!(len1, inner.bytes_read);
-
+            let data1 = "hello hello";
             let data2 = "g0t r00t";
-            let len2  = data2.len();
-            sock.push_data(Vec::from(data2));
-            assert_eq!(len1 + len2, inner.bytes_read);
+
+            sender.send(data1.as_bytes()).unwrap();
+            inner.ready(&mut ev, SERVER, EventSet::all());
+            assert_eq!(data1.len(), inner.bytes_read);
+
+            sender.send(data2.as_bytes()).unwrap();
+            inner.ready(&mut ev, SERVER, EventSet::all());
+            assert_eq!(data1.len() + data2.len(), inner.bytes_read);
         }
     }
 }
