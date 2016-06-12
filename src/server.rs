@@ -44,9 +44,10 @@ impl<'a> Server<'a> {
 #[derive(Debug)]
 struct InnerServer<'a, S> where S : 'a + SocketTrait {
 
-    tick_counter:   usize,
-    bytes_read:     usize,
-    socket:         &'a S,
+    bytes_read:         usize,
+    datagrams_invalid:  usize,
+    socket:             &'a S,
+    tick_counter:       usize,
 }
 
 impl<'a, Sock : SocketTrait> InnerServer<'a, Sock> {
@@ -56,6 +57,7 @@ impl<'a, Sock : SocketTrait> InnerServer<'a, Sock> {
         InnerServer {
             tick_counter: 0,
             bytes_read: 0,
+            datagrams_invalid: 0,
             socket: socket,
         }
     }
@@ -67,6 +69,7 @@ impl<'a, Sock : SocketTrait> Handler for InnerServer<'a, Sock> {
 
     fn ready(&mut self, _event_loop: &mut EventLoop<Self>, _token: Token, _events: EventSet) {
         self.tick_counter += 1;
+        self.datagrams_invalid += 1;
         let mut buffer : [u8; 4096] = [0; 4096];
 
         match self.socket.recv_from(&mut buffer) {
@@ -189,6 +192,89 @@ mod tests {
             sender.send(data2.as_bytes()).unwrap();
             inner.ready(&mut ev, SERVER, EventSet::all());
             assert_eq!(data1.len() + data2.len(), inner.bytes_read);
+        }
+
+        #[test]
+        fn initialize_invalids_datagrams_count_to_zero() {
+            let (_, sock) = UdpSocketMock::new();
+            let mut inner = InnerServer::new(&sock);
+
+            assert_eq!(0, inner.datagrams_invalid);
+        }
+
+        #[test]
+        fn it_count_invalids_datagrams() {
+            let (sender, sock) = UdpSocketMock::new();
+
+            let mut ev = EventLoop::new().unwrap();
+            let mut inner = InnerServer::new(&sock);
+            let data1 = "hello hello";
+
+            sender.send(data1.as_bytes()).unwrap();
+            inner.ready(&mut ev, SERVER, EventSet::all());
+
+            assert_eq!(1, inner.datagrams_invalid);
+        }
+
+        #[test]
+        fn valid_datagrams_doesnt_increase_invalid_count() {
+            let data : [u8; 240] = [
+                1u8,                                    // op
+                2,                                      // htype
+                3,                                      // hlen
+                4,                                      // ops
+                5, 6, 7, 8,                             // xid
+                9, 10,                                  // secs
+                11, 12,                                 // flags
+                13, 14, 15, 16,                         // ciaddr
+                17, 18, 19, 20,                         // yiaddr
+                21, 22, 23, 24,                         // siaddr
+                25, 26, 27, 28,                         // giaddr
+                29, 30, 31, 32,
+                33, 34, 35, 36,
+                37, 38, 39, 40,
+                41, 42, 43, 44,                         // chaddr
+                45, 46, 47, 48, 49, 50, 51, 52,
+                53, 54, 55, 56, 57, 58, 59, 60,
+                61, 62, 63, 64, 65, 66, 67, 68,
+                69, 70, 71, 72, 73, 74, 75, 76,
+
+                77, 78, 79, 80, 81, 82, 83, 84,
+                85, 86, 87, 88, 89, 90, 91, 92,
+                93, 94, 95, 96, 97, 98, 99, 100,
+                101, 102, 103, 104, 105, 106, 107, 0,
+
+                109, 110, 111, 112, 113, 114, 115, 116,
+                117, 118, 119, 120, 121, 122, 123, 124,
+                125, 109, 110, 111, 112, 113, 114, 115,
+                116, 117, 118, 119, 120, 121, 122, 123,
+
+                124, 125, 109, 110, 111, 112, 113, 114,
+                115, 116, 117, 118, 119, 120, 121, 122,
+                123, 124, 125, 109, 110, 111, 112, 113,
+                114, 115, 116, 117, 118, 119, 120, 121,
+
+                122, 123, 124, 125, 109, 110, 111, 112,
+                113, 114, 115, 116, 117, 118, 119, 120,
+                121, 122, 123, 124, 125, 109, 110, 111,
+                112, 113, 114, 115, 116, 117, 118, 119,
+
+                120, 121, 122, 123, 124, 125, 109, 110,
+                111, 112, 113, 114, 115, 116, 117, 118,
+                119, 120, 121, 122, 123, 124, 125, 109,
+                0, 0, 0, 0, 0, 0, 0, 0,
+
+                99, 130, 83, 99,                        // magic cookie
+            ];
+            let (sender, sock) = UdpSocketMock::new();
+
+            let mut ev = EventLoop::new().unwrap();
+            let mut inner = InnerServer::new(&sock);
+
+            sender.send(&data).unwrap();
+            inner.ready(&mut ev, SERVER, EventSet::all());
+
+            assert_eq!(0, inner.datagrams_invalid);
         }
     }
 }
